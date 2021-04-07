@@ -120,7 +120,7 @@ def show_galaxy_table(galaxies):
             f'<a href="data:file/csv;base64,{b64}" download="similar_galaxies.csv">Download table</a> of the 500 most similar galaxies.',
             unsafe_allow_html=True
         )
-        st.markdown(r'Galaxy ID is either the IAUNAME (prefixed with J) for galaxies in DR5 and the NASA-Sloan Atlas v1_0_1, or formatted like {brickid}_{objid} otherwise')
+        st.markdown(r'Galaxy ID is either the IAUNAME (prefixed with J) for galaxies in DR5 and the NASA-Sloan Atlas v1.0.1, or formatted like {brickid}\_{objid} otherwise')
 
 
 def show_query_galaxy(galaxy):
