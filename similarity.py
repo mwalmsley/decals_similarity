@@ -61,8 +61,11 @@ def get_vizier_search_url(ra, dec):
 def crossmatch_coordinates(ra, dec, catalog_coords: SkyCoord):
     search_coord = SkyCoord(ra, dec, unit='deg')
     best_index, separation, _ = match_coordinates_sky(search_coord, catalog_coords)
-    if separation > 20*u.arcsec:
-        st.warning('Warning - best matching galaxy has large separation: {}. Are your coordinates in the DECaLS footprint?'.format(separation))
+    if separation > 1*u.deg:
+        st.warning('Warning - best matching galaxy has extremely large separation: {}. Are your coordinates in the DECaLS footprint below?'.format(separation))
+        st.image('sky_coverage.png')
+    elif separation > 20*u.arcsec:
+        st.warning('Warning - best matching galaxy has moderately large separation: {}. The target galaxy may not be in our DECaLS catalog. Is it between r-mag 14.0 and 17.77?')
     return best_index, separation
 
 
