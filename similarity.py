@@ -110,7 +110,7 @@ def main(df, catalog_coords, features):
 
 st.set_page_config(
     layout="wide",
-    page_title='GZ DECaLS',
+    page_title='DECaLS Similarity',
     page_icon='gz_icon.jpeg'
 )
 
