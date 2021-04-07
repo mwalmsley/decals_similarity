@@ -61,8 +61,8 @@ def get_vizier_search_url(ra, dec):
 def crossmatch_coordinates(ra, dec, catalog_coords: SkyCoord):
     search_coord = SkyCoord(ra, dec, unit='deg')
     best_index, separation, _ = match_coordinates_sky(search_coord, catalog_coords)
-    if separation > 10*u.arcsec:
-        logging.warning('best index {} has large separation: {}'.format(best_index, separation))
+    if separation > 20*u.arcsec:
+        st.warning('Warning - best matching galaxy has large separation: {}. Are your coordinates in the DECaLS footprint?'.format(separation))
     return best_index, separation
 
 
@@ -103,7 +103,7 @@ def show_galaxy_table(galaxies):
     galaxies['link'] = galaxies['url'].apply(lambda x: make_clickable(x, text='Skyviewer Link'))
 
     display_table = galaxies[['galaxy_id', 'ra', 'dec', 'link']]
-    display_table = display_table.rename(columns={'galaxy_id': 'Galaxy ID', 'ra': 'RA', 'dec': 'Dec', 'Link': 'link'})
+    display_table = display_table.rename(columns={'galaxy_id': 'Galaxy ID', 'ra': 'RA', 'dec': 'Dec', 'link': 'Link'})
 
     with st.beta_expander("Show table"):
         st.write(
