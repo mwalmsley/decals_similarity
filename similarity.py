@@ -111,16 +111,16 @@ def show_galaxy_table(galaxies):
             unsafe_allow_html=True
         )
 
-    table_to_download = galaxies.copy()   # TODO any extra tweaks, maybe more rows, etc
-    csv = table_to_download.to_csv(index=False)
-    # strings to b64 bytes
-    b64 = base64.b64encode(csv.encode()).decode()
+        table_to_download = galaxies.copy()   # TODO any extra tweaks, maybe more rows, etc
+        csv = table_to_download.to_csv(index=False)
+        # strings to b64 bytes
+        b64 = base64.b64encode(csv.encode()).decode()
 
-    st.markdown(
-        f'<a href="data:file/csv;base64,{b64}" download="similar_galaxies.csv">Download table</a> of the 500 most similar galaxies.',
-        unsafe_allow_html=True
-    )
-    st.text(r'Galaxy ID is either the IAUNAME (prefixed with J) for galaxies in DR5, or formatted like {brickid}_{objid} for galaxies in DR8 but not DR5.')
+        st.markdown(
+            f'<a href="data:file/csv;base64,{b64}" download="similar_galaxies.csv">Download table</a> of the 500 most similar galaxies.',
+            unsafe_allow_html=True
+        )
+        st.markdown(r'Galaxy ID is either the IAUNAME (prefixed with J) for galaxies in DR5 and the NASA-Sloan Atlas v1_0_1, or formatted like {brickid}_{objid} otherwise')
 
 
 def show_query_galaxy(galaxy):
