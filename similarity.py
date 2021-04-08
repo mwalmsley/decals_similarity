@@ -69,7 +69,7 @@ def crossmatch_coordinates(ra, dec, catalog_coords: SkyCoord):
     return best_index, separation
 
 
-def find_neighbours(X, query_index, n_neighbors=36, metric='manhattan'):
+def find_neighbours(X, query_index, n_neighbors=500, metric='manhattan'):
     nbrs = NearestNeighbors(n_neighbors=n_neighbors, algorithm='ball_tree', metric=metric).fit(X)
     _, indices = nbrs.kneighbors(X[query_index].reshape(1, -1))
     return np.squeeze(indices)  # ordered by similarity, will include itself
@@ -170,6 +170,19 @@ def make_clickable(url, text):
     return f'<a target="_blank" href="{url}">{text}</a>'
 
 
+def get_nontrivial_neighbours(query_galaxy: pd.Series, neighbours: pd.DataFrame, min_sep=100*u.arcsec):
+    query_coord = SkyCoord(query_galaxy['ra'], query_galaxy['dec'], unit='deg')
+    separations = [SkyCoord(other['ra'], other['dec'], unit='deg').separation(query_coord) for _, other in neighbours.iterrows()]
+    above_min_sep = np.array([sep > min_sep for sep in separations])
+    if np.any(~above_min_sep):
+        st.warning(
+            """
+            Removed {} sources within 100 arcsec of target galaxy.
+            These are likely to be trivial matches from duplicate catalog entries.
+            """.format((~above_min_sep).sum())
+        )
+    return neighbours[above_min_sep].reset_index(drop=True)
+
 def main():
 
     st.title('Similarity Search')
@@ -193,11 +206,18 @@ def main():
             neighbour_indices = find_neighbours(features, best_index)
             assert neighbour_indices[0] == best_index  # should find itself
 
-        show_query_galaxy(df.iloc[best_index])
+            query_galaxy = df.iloc[best_index]
+            neighbours = df.iloc[neighbour_indices[1:]]
+
+            # exclude galaxies very very close to the original
+            # sometimes catalog will record one extended galaxy as multiple sources
+            nontrivial_neighbours = get_nontrivial_neighbours(query_galaxy, neighbours)
+
+        show_query_galaxy(query_galaxy)
         
         st.header('Similar Galaxies')
 
-        show_galaxies(df.iloc[neighbour_indices[1:19]])
+        show_galaxies(nontrivial_neighbours[:18])
 
 
 st.set_page_config(
