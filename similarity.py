@@ -75,18 +75,16 @@ def find_neighbours(X, query_index, n_neighbors=500, metric='manhattan'):
     return np.squeeze(indices)  # ordered by similarity, will include itself
 
 
-def show_galaxies(galaxies):
-
-    logging.info('Total galaxies: {}'.format(len(galaxies)))
+def show_galaxies(galaxies, max_display_galaxies=18):
     
     galaxies['url'] = list(galaxies.apply(get_url, axis=1))
 
-    show_galaxy_table(galaxies)
+    show_galaxy_table(galaxies, max_display_galaxies)
     st.text(" \n")
 
     opening_html = '<div style=display:flex;flex-wrap:wrap>'
     closing_html = '</div>'
-    child_html = ['<img src="{}" style=margin:3px;width:200px;></img>'.format(url) for url in galaxies['url']]
+    child_html = ['<img src="{}" style=margin:3px;width:200px;></img>'.format(url) for url in galaxies['url'][:max_display_galaxies]]
 
     gallery_html = opening_html
     for child in child_html:
@@ -99,13 +97,13 @@ def show_galaxies(galaxies):
     #     st.image(image, width=250)
 
 
-def show_galaxy_table(galaxies):
+def show_galaxy_table(galaxies, max_display_galaxies):
 
     # clean table
     galaxies = galaxies[['galaxy_id', 'ra', 'dec', 'url']].reset_index(drop=True)
     galaxies['link'] = galaxies['url'].apply(lambda x: make_clickable(x, text='Skyviewer Link'))
 
-    display_table = galaxies[['galaxy_id', 'ra', 'dec', 'link']]
+    display_table = galaxies[['galaxy_id', 'ra', 'dec', 'link']][:max_display_galaxies]
     display_table = display_table.rename(columns={'galaxy_id': 'Galaxy ID', 'ra': 'RA', 'dec': 'Dec', 'link': 'Link'})
 
     with st.beta_expander("Show table"):
@@ -178,19 +176,39 @@ def get_nontrivial_neighbours(query_galaxy: pd.Series, neighbours: pd.DataFrame,
         st.warning(
             """
             Removed {} sources within 100 arcsec of target galaxy.
-            These are likely to be trivial matches from duplicate catalog entries.
+            These are likely to be trivial matches from nearby catalog entries with similar field-of-view.
             """.format((~above_min_sep).sum())
         )
     return neighbours[above_min_sep].reset_index(drop=True)
+
 
 def main():
 
     st.title('Similarity Search')
     st.subheader('by Mike Walmsley ([@mike\_walmsley\_](https://twitter.com/mike_walmsley_))')
+    st.text(" \n")
 
     ra = float(st.text_input('RA (deg)', key='ra', help='Right Ascension of galaxy to search (in degrees)', value='184.6750'))
     dec = float(st.text_input('Dec (deg)', key='dec', help='Declination of galaxy to search (in degrees)', value='11.7309'))
     go = st.button('Search')
+
+    with st.beta_expander('Important Notes'):
+        st.markdown(
+            """
+            Which galaxies are included?
+            - Galaxies must be between r-mag 14.0 and 17.77 (the SDSS spectroscopic limit).
+            - Galaxies must be extended enough to be included in Galaxy Zoo (roughly, petrosian radius > 3 arcseconds)
+            - Galaxies must be in the DECaLS DR8 sky area. A sky area chart will display if the target coordinates are far outside.
+            
+            What are the machine learning limitations?
+            - The underlying model does not receive colour information to avoid bias. Colour grz images are shown for illustration only.
+            - The underlying model is likely to perform better with "macro" morphology (e.g. disturbances, rings, etc.) than small anomalies in otherwise normal galaxies (e.g. supernovae, Voorwerpen, etc.)
+            - Finding no similar galaxies does not imply there are none.
+            
+            Please see the paper (in prep.) for more details.
+            """
+        )
+    st.text(" \n")
 
     # avoid doing a new search whenever ra OR dec changes, usually people would change both together
     if go:
@@ -217,7 +235,7 @@ def main():
         
         st.header('Similar Galaxies')
 
-        show_galaxies(nontrivial_neighbours[:18])
+        show_galaxies(nontrivial_neighbours, max_display_galaxies=18)
 
 
 st.set_page_config(
