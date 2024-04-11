@@ -20,7 +20,8 @@ def load_catalog():
     catalog_loc = 'dr5_dr8_catalog_with_radius.parquet'
 
     return pd.read_parquet(catalog_loc, columns=columns).reset_index(drop=True)
-load_catalog = st.cache(load_catalog, persist=True, max_entries=1, allow_output_mutation=True, hash_funcs={pd.DataFrame: lambda _: None})
+# using cache_resource as never mutated so safe to load only once ever
+load_catalog = st.cache_data(load_catalog)
 
 
 def load_features(num_components=10):
@@ -32,7 +33,7 @@ def load_features(num_components=10):
     features_loc = f'dr5_8_b0_pca{num_components}_and_safe_ids.parquet'
 
     return pd.read_parquet(features_loc, columns=columns)
-load_features = st.cache(load_features, persist=True, max_entries=1, allow_output_mutation=True, hash_funcs={pd.DataFrame: lambda _: None})
+load_features = st.cache_data(load_features)
 
 
 # can't cache as weird datatype
@@ -55,7 +56,7 @@ def get_url(galaxy, size=250):
 
 def get_vizier_search_url(ra, dec):
     # http://simbad.u-strasbg.fr/simbad/sim-coo?Coord=180.4311d0.1828d&CooFrame=ICRS&CooEpoch=2000&CooEqui=2000&Radius=2&Radius.unit=arcmin&submit=submit+query&CoordList=
-    return 'http://simbad.u-strasbg.fr/simbad/sim-coo?Coord={ra}d{dec}d&CooFrame=ICRS&CooEpoch=2000&CooEqui=2000&Radius=2&Radius.unit=arcmin&submit=submit+query&CoordList='
+    return f'http://simbad.u-strasbg.fr/simbad/sim-coo?Coord={ra}d{dec}d&CooFrame=ICRS&CooEpoch=2000&CooEqui=2000&Radius=2&Radius.unit=arcmin&submit=submit+query&CoordList='
 
 
 def crossmatch_coordinates(ra, dec, catalog_coords: SkyCoord):
@@ -106,7 +107,7 @@ def show_galaxy_table(galaxies, max_display_galaxies):
     display_table = galaxies[['galaxy_id', 'ra', 'dec', 'link']][:max_display_galaxies]
     display_table = display_table.rename(columns={'galaxy_id': 'Galaxy ID', 'ra': 'RA', 'dec': 'Dec', 'link': 'Link'})
 
-    with st.beta_expander("Show table"):
+    with st.expander("Show table"):
         st.write(
             display_table.to_html(escape=False),
             unsafe_allow_html=True
@@ -192,7 +193,7 @@ def main():
     dec = float(st.text_input('Dec (deg)', key='dec', help='Declination of galaxy to search (in degrees)', value='11.7309'))
     go = st.button('Search')
 
-    with st.beta_expander('Important Notes'):
+    with st.expander('Important Notes'):
         st.markdown(
             """
             Which galaxies are included?
@@ -245,11 +246,17 @@ st.set_page_config(
 )
 
 
+
 if __name__ == '__main__':
 
     # logging.basicConfig(level=logging.CRITICAL)
+
+
+    # streamlit run /home/walml/repos/decals_similarity/similarity.py --server.fileWatcherType none
+
 
     LOCAL = os.getcwd() == '/home/walml/repos/decals_similarity'
     logging.info('Local: {}'.format(LOCAL))
 
     main()
+
