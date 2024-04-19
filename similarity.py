@@ -9,36 +9,24 @@ import pandas as pd
 from sklearn.neighbors import NearestNeighbors
 from astropy.coordinates import SkyCoord, match_coordinates_sky
 import astropy.units as u
+from huggingface_hub import hf_hub_download
 
+# @st.cache_data(persist='disk', max_entries=1)
+@st.cache_resource  # safe as never modified
+def load_catalog(num_components=10):
+    columns = ['galaxy_id', 'ra', 'dec', 'estimated_radius'] + [f'feat_pca_{n}' for n in range(num_components)]
 
-def load_catalog():
-    columns = ['ra', 'dec', 'estimated_radius', 'galaxy_id']
+    print('starting download')
+    catalog_loc = hf_hub_download(
+        repo_id='mwalmsley/zoobot-encoder-desi', 
+        filename='desi_pca10_with_radius_feat.parquet', 
+        repo_type="dataset"
+    )
 
-    # if LOCAL:
-    #     catalog_loc = '/home/walml/repos/astronomaly/dr5_dr8_catalog_with_radius.parquet'
-    # else:
-    catalog_loc = 'dr5_dr8_catalog_with_radius.parquet'
-
-    return pd.read_parquet(catalog_loc, columns=columns).reset_index(drop=True)
-# using cache_resource as never mutated so safe to load only once ever
-load_catalog = st.cache_data(load_catalog)
-
-
-def load_features(num_components=10):
-    columns = [f'feat_{n}_pca' for n in range(num_components)] + ['galaxy_id']
-
-    # if LOCAL:
-    #     features_loc = f'/home/walml/repos/astronomaly/dr5_8_b0_pca{num_components}_and_safe_ids.parquet'
-    # else:
-    features_loc = f'dr5_8_b0_pca{num_components}_and_safe_ids.parquet'
-
-    return pd.read_parquet(features_loc, columns=columns)
-load_features = st.cache_data(load_features)
-
-
-# can't cache as weird datatype
-def catalog_to_coordinates(df):
-    return SkyCoord(list(df['ra']), list(df['dec']), unit='deg')
+    print('started loading catalog')
+    df = pd.read_parquet(catalog_loc, columns=columns).reset_index(drop=True)
+    print('loaded within cache')
+    return df
 
 
 def get_url(galaxy, size=250):
@@ -59,21 +47,26 @@ def get_vizier_search_url(ra, dec):
     return f'http://simbad.u-strasbg.fr/simbad/sim-coo?Coord={ra}d{dec}d&CooFrame=ICRS&CooEpoch=2000&CooEqui=2000&Radius=2&Radius.unit=arcmin&submit=submit+query&CoordList='
 
 
-def crossmatch_coordinates(ra, dec, catalog_coords: SkyCoord):
-    search_coord = SkyCoord(ra, dec, unit='deg')
-    best_index, separation, _ = match_coordinates_sky(search_coord, catalog_coords)
-    if separation > 1*u.deg:
-        st.warning('Warning - best matching galaxy has extremely large separation: {}. Are your coordinates in the DECaLS footprint below?'.format(separation))
+def separation_warning(separation):
+    if separation > 1:
+        st.warning('Warning - best matching galaxy has extremely large separation: {} deg. Are your coordinates in the DESI-LS footprint below?'.format(separation))
         st.image('sky_coverage.png')
-    elif separation > 20*u.arcsec:
-        st.warning('Warning - best matching galaxy has moderately large separation: {}. The target galaxy may not be in our DECaLS catalog. Is it between r-mag 14.0 and 17.77?')
-    return best_index, separation
+    elif separation > (20/3600):
+        st.warning('Warning - best matching galaxy has moderately large separation: {} arcmin. The target galaxy may not be in our DESI-LS catalog. Is it between r-mag 14.0 and 19?'.format(separation/3600))
 
 
-def find_neighbours(X, query_index, n_neighbors=500, metric='manhattan'):
+def find_neighbours_from_index(X, query_index, n_neighbors=16, metric='manhattan'):
+    # n_neighbours only controls top k, no smoothing remember
+    print('fitting index tree')
     nbrs = NearestNeighbors(n_neighbors=n_neighbors, algorithm='ball_tree', metric=metric).fit(X)
     _, indices = nbrs.kneighbors(X[query_index].reshape(1, -1))
     return np.squeeze(indices)  # ordered by similarity, will include itself
+
+def find_neighbours_from_query(X, query, n_neighbors=1, metric='euclidean'):
+    print('fitting query tree')
+    nbrs = NearestNeighbors(n_neighbors=n_neighbors, algorithm='ball_tree', metric=metric).fit(X)
+    distances, indices = nbrs.kneighbors(query)
+    return np.squeeze(distances), np.squeeze(indices)  # ordered by similarity, will include itself
 
 
 def show_galaxies(galaxies, max_display_galaxies=18):
@@ -118,11 +111,12 @@ def show_galaxy_table(galaxies, max_display_galaxies):
         # strings to b64 bytes
         b64 = base64.b64encode(csv.encode()).decode()
 
+        # TODO replace with this
         st.markdown(
             f'<a href="data:file/csv;base64,{b64}" download="similar_galaxies.csv">Download table</a> of the 500 most similar galaxies.',
             unsafe_allow_html=True
         )
-        st.markdown(r'Galaxy ID is either the IAUNAME (prefixed with J) for galaxies in DR5 and the NASA-Sloan Atlas v1.0.1, or formatted like {brickid}\_{objid} otherwise')
+        st.markdown(r'Galaxy ID is formatted like {brickid}\_{objid} in DESI-LS DR8. Crossmatch to DESI-LS DR8 with 8000\_{brickid}\_{objid}')
 
 
 def show_query_galaxy(galaxy):
@@ -151,18 +145,12 @@ def show_query_galaxy(galaxy):
 # subfunctions are cached where possible
 def prepare_data():
 
-    catalog = load_catalog()
-    unaligned_features = load_features()
-    
-    # merge is quite quick, no need to cache
-    df = pd.merge(catalog, unaligned_features, how='inner', on='galaxy_id')
+    df = load_catalog(num_components=10)
 
-    feature_cols = [col for col in df.columns.values if col.endswith('_pca')]
+    feature_cols = [col for col in df.columns.values if col.startswith('feat_pca')]
     features = df[feature_cols].values
 
-    catalog_coords = catalog_to_coordinates(df)
-
-    return df, features, catalog_coords
+    return df, features
 
 # https://discuss.streamlit.io/t/display-urls-in-dataframe-column-as-a-clickable-hyperlink/743/8
 def make_clickable(url, text):
@@ -190,14 +178,32 @@ def main():
     st.text(" \n")
 
     ra = float(st.text_input('RA (deg)', key='ra', help='Right Ascension of galaxy to search (in degrees)', value='184.6750'))
-    dec = float(st.text_input('Dec (deg)', key='dec', help='Declination of galaxy to search (in degrees)', value='11.7309'))
-    go = st.button('Search')
+    dec = float(st.text_input('Dec (deg)', key='dec', help='Declination of galaxy to search (in degrees)', value='11.73181'))
+
+    legacysurvey_str_default = 'https://www.legacysurvey.org/viewer?ra=184.6750&dec=11.73181&layer=ls-dr8&zoom=12'
+    legacysurvey_str = st.text_input('or, paste link', key='legacysurvey_str', help='Legacy Survey Viewer link (for ra and dec)', value=legacysurvey_str_default)
+    
+    if legacysurvey_str != legacysurvey_str_default:
+        query_params = legacysurvey_str.split('?')[-1]
+        ra_str = query_params.split('&')[0].replace('ra=', '')
+        dec_str = query_params.split('&')[1].replace('dec=', '')
+        ra = float(ra_str)
+        dec = float(dec_str)
+        st.markdown(f'Using link coordinates: {ra}, {dec}')
+
+    with st.spinner('Loading representation, please wait'):
+        # essentially all the delay
+        # do this after rendering the inputs, so user has something to look at
+        df, features = prepare_data()
+        print('data ready')
+        go = st.button('Search')
+        # st.markdown('Ready to search.')
 
     with st.expander('Important Notes'):
         st.markdown(
             """
             Which galaxies are included?
-            - Galaxies must be between r-mag 14.0 and 17.77 (the SDSS spectroscopic limit).
+            - Galaxies must be between r-mag 14.0 and 19 (the SDSS spectroscopic limit).
             - Galaxies must be extended enough to be included in Galaxy Zoo (roughly, petrosian radius > 3 arcseconds)
             - Galaxies must be in the DECaLS DR8 sky area. A sky area chart will display if the target coordinates are far outside.
             
@@ -211,18 +217,20 @@ def main():
         )
     st.text(" \n")
 
+
+
     # avoid doing a new search whenever ra OR dec changes, usually people would change both together
     if go:
 
-        with st.spinner('Searching 911,442 galaxies. Please wait 30 seconds.'):
+        with st.spinner(f'Searching {len(df)} galaxies.'):
             
-            # essentially all the delay
-            # do this after rendering the inputs, so user has something to look at
-            df, features, catalog_coords = prepare_data()
+            coordinate_query = np.array([ra, dec]).reshape((1, -1))
+            separation, best_index = find_neighbours_from_query(df[['ra', 'dec']], coordinate_query)  # n_neigbours=1
+            # print('crossmatched')
 
-            best_index, separation = crossmatch_coordinates(ra, dec, catalog_coords)
+            separation_warning(separation)
         
-            neighbour_indices = find_neighbours(features, best_index)
+            neighbour_indices = find_neighbours_from_index(features, best_index)
             assert neighbour_indices[0] == best_index  # should find itself
 
             query_galaxy = df.iloc[best_index]
@@ -252,11 +260,11 @@ if __name__ == '__main__':
     # logging.basicConfig(level=logging.CRITICAL)
 
 
-    # streamlit run /home/walml/repos/decals_similarity/similarity.py --server.fileWatcherType none
+    # streamlit run similarity.py --server.fileWatcherType none
 
 
-    LOCAL = os.getcwd() == '/home/walml/repos/decals_similarity'
-    logging.info('Local: {}'.format(LOCAL))
+    # LOCAL = os.getcwd() == '/home/walml/repos/decals_similarity'
+    # logging.info('Local: {}'.format(LOCAL))
 
     main()
 
