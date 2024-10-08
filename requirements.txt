@@ -1,4 +1,4 @@
-numpy
+numpy==1.23.5  # temp, astropy needs to update to fix this bug https://stackoverflow.com/questions/75069062/module-numpy-has-no-attribute-object
 pandas
 matplotlib
 scikit-learn
